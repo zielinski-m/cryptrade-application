@@ -3251,7 +3251,7 @@ class RepoFilter(object):
     if self._blob_callback:
       self._blob_callback(blob, self.callback_metadata())
 
-  def _filter_files(self, commit):
+  def _filter_file_name(self, change, new_file_changes, commit_id):
     def filename_matches(path_expression, pathname):
       ''' Returns whether path_expression matches pathname or a leading
           directory thereof, allowing path_expression to not have a trailing
@@ -3292,7 +3292,52 @@ class RepoFilter(object):
             full_pathname = match.sub(repl, full_pathname)
       return full_pathname if (wanted == filtering_is_inclusive) else None
 
+    # Now, the code to determine if we should keep, drop, or rename files.
     args = self._args
+    if change.filename in self._newnames:
+      change.filename = self._newnames[change.filename]
+    else:
+      original_filename = change.filename
+      change.filename = newname(args.path_changes, change.filename,
+                                args.use_base_name, args.inclusive)
+      if self._filename_callback:
+        change.filename = self._filename_callback(change.filename)
+      self._newnames[original_filename] = change.filename
+    if not change.filename:
+      return None # Filtering criteria excluded this file
+    if change.filename in new_file_changes:
+      # Getting here means that path renaming is in effect, and caused one
+      # path to collide with another.  That's usually bad, but can be okay
+      # under two circumstances:
+      #   1) Sometimes people have a file named OLDFILE in old revisions of
+      #      history, and they rename to NEWFILE, and would like to rewrite
+      #      history so that all revisions refer to it as NEWFILE.  As such,
+      #      we can allow a collision when (at least) one of the two paths
+      #      is a deletion.  Note that if OLDFILE and NEWFILE are unrelated
+      #      this also allows the rewrite to continue, which makes sense
+      #      since OLDFILE is no longer in the way.
+      #   2) If OLDFILE and NEWFILE are exactly equal, then writing them
+      #      both to the same location poses no problem; we only need one
+      #      file.  (This could come up if someone copied a file in some
+      #      commit, then later either deleted the file or kept it exactly
+      #      in sync with the original with any changes, and then decides
+      #      they want to rewrite history to only have one of the two files)
+      colliding_change = new_file_changes[change.filename]
+      if change.type == b'D':
+        # We can just throw this one away and keep the other
+        return None
+      elif change.type == b'M' and (
+          change.mode == colliding_change.mode and
+          change.blob_id == colliding_change.blob_id):
+        # The two are identical, so we can throw this one away and keep other
+        return None
+      elif new_file_changes[change.filename].type != b'D':
+        raise SystemExit(_("File renaming caused colliding pathnames!\n") +
+                         _("  Commit: {}\n").format(commit_id) +
+                         _("  Filename: {}").format(change.filename))
+    return change.filename
+
+  def _filter_files(self, commit):
     new_file_changes = {}  # Assumes no renames or copies, otherwise collisions
     for change in commit.file_changes:
       # NEEDSWORK: _If_ we ever want to pass `--full-tree` to fast-export and
@@ -3303,47 +3348,7 @@ class RepoFilter(object):
       if change.type == b'DELETEALL':
         new_file_changes[b''] = change
         continue
-      if change.filename in self._newnames:
-        change.filename = self._newnames[change.filename]
-      else:
-        original_filename = change.filename
-        change.filename = newname(args.path_changes, change.filename,
-                                  args.use_base_name, args.inclusive)
-        if self._filename_callback:
-          change.filename = self._filename_callback(change.filename)
-        self._newnames[original_filename] = change.filename
-      if not change.filename:
-        continue # Filtering criteria excluded this file; move on to next one
-      if change.filename in new_file_changes:
-        # Getting here means that path renaming is in effect, and caused one
-        # path to collide with another.  That's usually bad, but can be okay
-        # under two circumstances:
-        #   1) Sometimes people have a file named OLDFILE in old revisions of
-        #      history, and they rename to NEWFILE, and would like to rewrite
-        #      history so that all revisions refer to it as NEWFILE.  As such,
-        #      we can allow a collision when (at least) one of the two paths
-        #      is a deletion.  Note that if OLDFILE and NEWFILE are unrelated
-        #      this also allows the rewrite to continue, which makes sense
-        #      since OLDFILE is no longer in the way.
-        #   2) If OLDFILE and NEWFILE are exactly equal, then writing them
-        #      both to the same location poses no problem; we only need one
-        #      file.  (This could come up if someone copied a file in some
-        #      commit, then later either deleted the file or kept it exactly
-        #      in sync with the original with any changes, and then decides
-        #      they want to rewrite history to only have one of the two files)
-        colliding_change = new_file_changes[change.filename]
-        if change.type == b'D':
-          # We can just throw this one away and keep the other
-          continue
-        elif change.type == b'M' and (
-            change.mode == colliding_change.mode and
-            change.blob_id == colliding_change.blob_id):
-          # The two are identical, so we can throw this one away and keep other
-          continue
-        elif new_file_changes[change.filename].type != b'D':
-          raise SystemExit(_("File renaming caused colliding pathnames!\n") +
-                           _("  Commit: {}\n").format(commit.original_id) +
-                           _("  Filename: {}").format(change.filename))
+
       # Strip files that are too large
       if self._args.max_blob_size and \
          self._unpacked_size.get(change.blob_id, 0) > self._args.max_blob_size:
@@ -3351,7 +3356,12 @@ class RepoFilter(object):
       if self._args.strip_blobs_with_ids and \
          change.blob_id in self._args.strip_blobs_with_ids:
         continue
-      # Otherwise, record the change
+
+      # Modify filename as needed
+      if self._filter_file_name(change, new_file_changes, commit.original_id) is None:
+        continue # Exclude this file
+
+      # Record this specific change
       new_file_changes[change.filename] = change
     commit.file_changes = [v for k,v in sorted(new_file_changes.items())]
 

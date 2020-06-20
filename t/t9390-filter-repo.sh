@@ -824,6 +824,34 @@ test_expect_success '--replace-text all options' '
 	)
 '
 
+test_expect_success '--replace-text-filename-callback' '
+	setup_analyze_me &&
+	(
+		git clone file://"$(pwd)"/analyze_me replace_text_callback &&
+		cd replace_text_callback &&
+
+		cat >../replace-rules <<-\EOF &&
+		rename==>relabel
+		literal:spam==>foodstuff
+		glob:ran*m==>haphazard
+		EOF
+		git filter-repo --replace-text ../replace-rules \
+			--replace-text-filename-callback \
+				"return filename == b\"whatever\"" &&
+
+		echo "spam" >expect &&           # Due to filename restriction
+		#echo "foodstuff" >expect &&     # Expected otherwise
+		test_cmp expect sequence/to &&
+
+		echo "haphazard other change" >expect &&
+		test_cmp expect whatever &&
+
+		echo "rename a lot" >expect &&   # Due to filename restriction
+		#echo "relabel a lot" >expect && # Expected otherwise
+		test_cmp expect mercurial
+	)
+'
+
 test_expect_success '--strip-blobs-bigger-than' '
 	setup_analyze_me &&
 	(
@@ -1232,7 +1260,10 @@ test_expect_success 'other startup error cases and requests for help' '
 		test_i18ngrep "Pathnames cannot begin with a ./" err &&
 
 		test_must_fail git filter-repo --subdirectory-filter /foo 2>err &&
-		test_i18ngrep "Pathnames cannot begin with a ./" err
+		test_i18ngrep "Pathnames cannot begin with a ./" err &&
+
+		test_must_fail git filter-repo --replace-text-filename-callback "return True" 2>err &&
+		test_i18ngrep "makes no sense without --replace-text" err
 	)
 '
 

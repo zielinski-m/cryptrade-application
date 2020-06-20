@@ -1828,6 +1828,12 @@ EXAMPLES
                "end the line with '==>' and some replacement text to "
                "choose a replacement choice other than the default of '{}'."
                .format(decode(FilteringOptions.default_replace_text))))
+    contents.add_argument('--replace-text-filename-callback',
+                          metavar="FUNCTION_BODY",
+        help=_("Python code body for choosing whether a given file should "
+               "be affected by --replace-text; see CALLBACKS sections below, "
+               "and note that the function argument is 'filename' and the "
+               "return type expected is a boolean."))
     contents.add_argument('--strip-blobs-bigger-than', metavar='SIZE',
                           dest='max_blob_size', default=0,
         help=_("Strip blobs (files) bigger than specified size (e.g. '5M', "
@@ -2083,6 +2089,9 @@ EXAMPLES
         args.max_blob_size = int(args.max_blob_size[0:-1]) * mult[suffix]
       else:
         args.max_blob_size = int(args.max_blob_size)
+    if args.replace_text_filename_callback and not args.replace_text:
+      raise SystemExit(_("Error: --replace-text-filename-callback makes no "
+                         "sense without --replace-text"))
 
   @staticmethod
   def get_replace_text(filename):
@@ -2702,7 +2711,8 @@ class RepoFilter(object):
                commit_callback = None,
                tag_callback = None,
                reset_callback = None,
-               done_callback = None):
+               done_callback = None,
+               replace_text_filename_callback = None):
 
     self._args = args
 
@@ -2722,6 +2732,10 @@ class RepoFilter(object):
     self._name_callback        = name_callback      # author, committer, tagger
     self._email_callback       = email_callback     # author, committer, tagger
     self._refname_callback     = refname_callback   # from commit/tag/reset
+
+    # Store other miscellaneous callbacks
+    self._replace_text_filename_callback = replace_text_filename_callback
+
     self._handle_arg_callbacks()
 
     # Defaults for input
@@ -2800,12 +2814,21 @@ class RepoFilter(object):
     # Compile some regexes and cache those
     self._hash_re = re.compile(br'(\b[0-9a-f]{7,40}\b)')
 
+    # If we are doing replace-text on only individual filenames, then we
+    # need a cat-file batch process
+    self.cat_file_proc = None
+    if self._args.replace_text_filename_callback and self._args.replace_text:
+      self.cat_file_proc = subproc.Popen(['git', 'cat-file', '--batch'],
+                                         stdin = subprocess.PIPE,
+                                         stdout = subprocess.PIPE)
+
   def _handle_arg_callbacks(self):
     def make_callback(argname, str):
       exec('def callback({}, _do_not_use_this_var = None):\n'.format(argname)+
            '  '+'\n  '.join(str.splitlines()), globals())
       return callback #namespace['callback']
-    def handle(type):
+    def handle(type, argname = None):
+      argname = argname or type
       callback_field = '_{}_callback'.format(type)
       code_string = getattr(self._args, type+'_callback')
       if code_string:
@@ -2817,7 +2840,8 @@ class RepoFilter(object):
            type not in ('blob', 'commit', 'tag', 'reset'):
           raise SystemExit(_("Error: --%s-callback should have a return statement")
                            % type)
-        setattr(self, callback_field, make_callback(type, code_string))
+        setattr(self, callback_field, make_callback(argname, code_string))
+    handle('replace_text_filename', 'filename')
     handle('filename')
     handle('message')
     handle('name')
@@ -3242,6 +3266,7 @@ class RepoFilter(object):
       blob.skip()
 
     if self._args.replace_text and \
+       not self._args.replace_text_filename_callback and \
        not any(x == b"0" for x in blob.data[0:8192]):
       for literal, replacement in self._args.replace_text['literals']:
         blob.data = blob.data.replace(literal, replacement)
@@ -3250,6 +3275,34 @@ class RepoFilter(object):
 
     if self._blob_callback:
       self._blob_callback(blob, self.callback_metadata())
+
+  def _filter_file_content(self, change):
+    if change.type == b'D':
+      return # deleted files have no remaining content to filter
+
+    if change.mode in (b'120000', b'160000'):
+      return # symlinks and submodules aren't text files we can filter
+
+    if not self._args.replace_text_filename_callback or \
+       not self._args.replace_text:
+      return # rest of this function deals with text replacement
+
+    if not self._replace_text_filename_callback(change.filename):
+      return # this isn't one of the files we need to do text replacement on
+
+    self.cat_file_proc.stdin.write(change.blob_id + b'\n')
+    self.cat_file_proc.stdin.flush()
+    objhash, objtype, objsize = self.cat_file_proc.stdout.readline().split()
+    contents = self.cat_file_proc.stdout.read(int(objsize))
+    for literal, replacement in self._args.replace_text['literals']:
+      contents = contents.replace(literal, replacement)
+    for regex,   replacement in self._args.replace_text['regexes']:
+      contents = regex.sub(replacement, contents)
+    self.cat_file_proc.stdout.read(1) # Read trailing newline
+
+    blob = Blob(contents)
+    self.insert(blob) # Note: we rely on this to call self._tweak_blob()
+    change.blob_id = blob.id
 
   def _filter_file_name(self, change, new_file_changes, commit_id):
     def filename_matches(path_expression, pathname):
@@ -3356,6 +3409,9 @@ class RepoFilter(object):
       if self._args.strip_blobs_with_ids and \
          change.blob_id in self._args.strip_blobs_with_ids:
         continue
+
+      # Modify file content as needed
+      self._filter_file_content(change)
 
       # Modify filename as needed
       if self._filter_file_name(change, new_file_changes, commit.original_id) is None:
@@ -3598,7 +3654,8 @@ class RepoFilter(object):
       self._fe_orig = None
     else:
       skip_blobs = (self._blob_callback is None and
-                    self._args.replace_text is None and
+                    (self._args.replace_text is None or
+                     self._args.replace_text_filename_callback is not None) and
                     self._args.source == self._args.target)
       extra_flags = []
       if skip_blobs:
@@ -3894,6 +3951,11 @@ class RepoFilter(object):
       # Make sure fast-export completed successfully
       if not self._args.stdin and self._fep.wait():
         raise SystemExit(_("Error: fast-export failed; see above.")) # pragma: no cover
+
+    # Shut down self.cat_file_proc if we started it up
+    if self.cat_file_proc:
+      self.cat_file_proc.stdin.close()
+      self.cat_file_proc.wait()
 
     # If we're not the manager of self._output, we should avoid post-run cleanup
     if not self._managed_output:

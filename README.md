@@ -1,48 +1,56 @@
-Nazwa projektu: Cryptrade
+# Nazwa projektu: **_Cryptrade_**
 
-Opis:
+1. **Opis**:
 
 Cryptrade to aplikacja webowa, która umożliwia użytkownikom monitorowanie aktualnych cen kryptowalut. Aplikacja korzysta z API CryptoCompare do pobierania danych o cenach kryptowalut.
 
-Funkcjonalność:
+#
+2. **Funkcjonalność**:
 
-Wyświetlanie listy kryptowalut wraz z ich aktualnymi cenami
-Wyświetlanie wykresów cen kryptowalut
-Wysyłanie powiadomień o zmianach cen kryptowalut.
+*  Wyświetlanie listy kryptowalut wraz z ich aktualnymi cenami
+*  Wyświetlanie wykresów cen kryptowalut
+*  Wysyłanie powiadomień o zmianach cen kryptowalut.
 
-Wymagania:
+#
+3. **Wymagania**:
 
-Java 11
-Gradle
-Spring Boot
-Instalacja:
+*  Java 11
+*  Gradle
+*  Spring Boot
+*  Instalacja:
 
+#
 Sklonuj repozytorium GitHub:
-git clone https://github.com/zielinski-m/cryptrade.git
-Przejdź do folderu projektu:
-cd cryptrade
-Uruchom aplikację:
-gradle bootRun
 
-Użytkowanie:
+-  git clone https://github.com/zielinski-m/cryptrade.git
+-  Przejdź do folderu projektu:
+-  cd cryptrade
+-  Uruchom aplikację:
+-  gradle bootRun
 
-Aplikacja dostępna jest pod adresem:
+#
+4. **Użytkowanie**:
+
+**Aplikacja dostępna jest pod adresem:**
 
 //work in progress
 
-Dodatkowe informacje:
+#
+5. **Dodatkowe informacje:**
 
 Aplikacja wykorzystuje następujące wzorce projektowe:
-Singleton
-Data Access Object
+*  Singleton
+*  Data Access Object
+
 Aplikacja została przetestowana za pomocą testów jednostkowych i integracyjnych.
 
-Kontakt:
+6. **Kontakt**:
 
-[Twoje dane kontaktowe]
+Michał Zieliński
+zielinski93.m@gmail.com
 
 
-Zobacz również:
+7. **Zobacz również**:
 
 https://github.com/zielinski-m/Task-web-application.git
 

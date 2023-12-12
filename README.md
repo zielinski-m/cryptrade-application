@@ -14,12 +14,13 @@ Cryptrade to aplikacja webowa, która umożliwia użytkownikom monitorowanie akt
 #
 3. **Wymagania**:
 
-*  Java 11
+*  Java 17
 *  Gradle
 *  Spring Boot
-*  Instalacja:
 
 #
+
+Instalacja:
 Sklonuj repozytorium GitHub:
 
 -  git clone https://github.com/zielinski-m/cryptrade.git
@@ -52,6 +53,8 @@ zielinski93.m@gmail.com
 
 7. **Zobacz również**:
 
-https://github.com/zielinski-m/Task-web-application.git
+- https://github.com/zielinski-m/Cryptrade-vaadem-app
+
+- https://github.com/zielinski-m/Task-web-application
 
 

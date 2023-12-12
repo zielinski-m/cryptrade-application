@@ -9,5 +9,4 @@ public class CryptradeApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(CryptradeApplication.class, args);
 	}
-
 }

@@ -295,6 +295,43 @@ test_expect_success '--file-info-callback messing with history' '
 	)
 '
 
+test_expect_success '--file-info-callback and deletes and drops' '
+	setup file_info_deletes_drops &&
+	(
+		cd file_info_deletes_drops &&
+
+		git rm file.doc &&
+		git commit -m "Nuke doc file" &&
+
+		git filter-repo --force --file-info-callback "
+		    size = value.get_size_by_identifier(blob_id)
+		    (newname, newmode) = (filename, mode)
+		    if filename == b\"world\" and size == 12:
+		      newname = None
+		    if filename == b\"advice\" and size == 77:
+		      newmode = None
+		    return (newname, newmode, blob_id)
+                    "
+
+		cat <<-EOF >expect &&
+		foobar.c
+		secret
+		world
+		EOF
+
+		echo 1 >expect &&
+		git rev-list --count HEAD -- world >actual &&
+		test_cmp expect actual &&
+
+		echo 2 >expect &&
+		git rev-list --count HEAD -- advice >actual &&
+		test_cmp expect actual &&
+
+		echo hello >expect &&
+		test_cmp expect world
+	)
+'
+
 test_lazy_prereq UNIX2DOS '
         unix2dos -h
         test $? -ne 127

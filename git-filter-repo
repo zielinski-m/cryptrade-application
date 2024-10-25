@@ -1846,12 +1846,12 @@ class FilteringOptions(object):
       value.apply_replace_text(contents) -> new_contents (bytestring)
     and can read/write the following data member from the value instance:
       value.data (dict)
-    The filename return value is interpreted the same as for
-    --filename-callback (with a value of None signalling the commit
-    modification in this commit should be dropped), and mode is one of
-    b'100644', b'100755', b'120000', or b'160000' (or None to signal that the
-    file in question should be deleted by the commit processing this file
-    change).
+    
+    The filename can be used for renaming the file similar to
+    --filename-callback, and mode is one of b'100644', b'100755',
+    b'120000', or b'160000'.  There are two special case: if filename is
+    returned as None, the change will be dropped, and if mode is None, the
+    file will be deleted by the commit processing this change.
 
     For more detailed examples and explanations AND caveats, see
       https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html#CALLBACKS
@@ -3875,6 +3875,7 @@ class RepoFilter(object):
                                      change.blob_id,
                                      self._file_info_value)
           if mode is None:
+            assert(filename is not None)
             new_change = FileChange(b'D', filename)
           elif filename is None:
             continue # Drop the FileChange from this commit

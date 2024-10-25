@@ -3870,6 +3870,8 @@ class RepoFilter(object):
           if filename is None:
             continue
           new_change = FileChange(b'M', filename, blob_id, mode)
+        else:
+          new_change = change  # use change as-is for deletions
         new_file_changes.append(new_change)
       commit.file_changes = new_file_changes
 

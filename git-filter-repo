@@ -1833,8 +1833,12 @@ class FilteringOptions(object):
       def file_info_callback(filename, mode, blob_id, value):
         BODY
 
-    It is expected to return a tuple of (filename, mode, blob_id).  It can
-    make use of the following functions from the value instance:
+    It is designed to be used in cases where filtering depends on both
+    filename and contents (and maybe mode).  It is called for file changes
+    other than deletions (since deletions have no file contents to operate
+    on).  This callback is expected to return a tuple of (filename, mode,
+    blob_id).  It can make use of the following functions from the value
+    instance:
       value.get_contents_by_identifier(blob_id) -> contents (bytestring)
       value.get_size_by_identifier(blob_id) -> size_of_blob (int)
       value.insert_file_with_contents(contents) -> blob_id
@@ -1843,8 +1847,11 @@ class FilteringOptions(object):
     and can read/write the following data member from the value instance:
       value.data (dict)
     The filename return value is interpreted the same as for
-    --filename-callback, and mode is one of b'100644', b'100755', b'120000',
-    or b'160000'.
+    --filename-callback (with a value of None signalling the commit
+    modification in this commit should be dropped), and mode is one of
+    b'100644', b'100755', b'120000', or b'160000' (or None to signal that the
+    file in question should be deleted by the commit processing this file
+    change).
 
     For more detailed examples and explanations AND caveats, see
       https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html#CALLBACKS
@@ -3867,9 +3874,12 @@ class RepoFilter(object):
                                      change.mode,
                                      change.blob_id,
                                      self._file_info_value)
-          if filename is None:
-            continue
-          new_change = FileChange(b'M', filename, blob_id, mode)
+          if mode is None:
+            new_change = FileChange(b'D', filename)
+          elif filename is None:
+            continue # Drop the FileChange from this commit
+          else:
+            new_change = FileChange(b'M', filename, blob_id, mode)
         else:
           new_change = change  # use change as-is for deletions
         new_file_changes.append(new_change)

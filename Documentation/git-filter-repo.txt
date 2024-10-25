@@ -1282,13 +1282,19 @@ git-filter-repo --filename-callback '
   '
 --------------------------------------------------
 
-The file-info callback is more involved; it takes four parameters
-(filename, mode, blob_id, and value), and expects three to be returned
-(filename, mode, blob_id).  The filename is handled the same as the
-filename callback; it can be used to rename or even delete the file in
-question.  The mode is a simple bytestring, and the blob_id is most
-useful in conjunction with the value parameter.  The value parameter
-is an instance of a class that has the following functions
+The file-info callback is more involved.  It is designed to be used in
+cases where filtering depends on both filename and contents (and maybe
+mode).  It is called for file changes other than deletions (since
+deletions have no file contents to operate on).  The file info
+callback takes four parameters (filename, mode, blob_id, and value),
+and expects three to be returned (filename, mode, blob_id).  The
+filename is handled similar to the filename callback; it can be used
+to rename the file, or if set to None, to drop that change from the
+commit.  The mode is a simple bytestring (or None to signal you want
+the file in question deleted; mode being None trumps filename being
+None), and the blob_id is most useful in conjunction with the value
+parameter.  The value parameter is an instance of a class that has the
+following functions
   value.get_contents_by_identifier(blob_id) -> contents (bytestring)
   value.get_size_by_identifier(blob_id) -> size_of_blob (int)
   value.insert_file_with_contents(contents) -> blob_id

@@ -1846,7 +1846,7 @@ class FilteringOptions(object):
       value.apply_replace_text(contents) -> new_contents (bytestring)
     and can read/write the following data member from the value instance:
       value.data (dict)
-    
+
     The filename can be used for renaming the file similar to
     --filename-callback (or None to drop the change), and mode is one
     of b'100644', b'100755', b'120000', or b'160000'.
